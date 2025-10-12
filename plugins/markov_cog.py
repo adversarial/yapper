@@ -20,8 +20,8 @@ import json
 import typing
 import os, pathlib
 
-from plugins.lib.markov import markov_trainer
-from plugins.lib.markov_manager import markov_manager
+from plugins.lib.markov.markov import markov_trainer
+from plugins.lib.markov.markov_manager import markov_manager
 from lib.FancyDiscordPrompt import make_ActionOptionPrompt, make_OptionPrompt, make_OptionPromptThenModal
 
 MARKOV_CONFIG_FILENAME = 'markov.ini'
@@ -34,7 +34,7 @@ class discord_markov_trainer(markov_trainer):
         if not hasattr(channel, 'history'):
             return
         async for message in channel.history(limit = max_messages):
-            await self.markov.process_message(message.content)
+            await self.markov.process_message(message.content, message.id, message.author.id)
 
     async def train_on_server(self, guild, max_messages = None):
         for c in guild.channels:
@@ -42,7 +42,7 @@ class discord_markov_trainer(markov_trainer):
                 continue
             try:
                 async for message in c.history(limit = max_messages):
-                    await self.markov.process_message(message.content)
+                    await self.markov.process_message(message.content, message.id, message.author.id)
                     if max_messages is not None:
                         max_messages -= 1
                         if max_messages < 1:
@@ -106,10 +106,12 @@ class MarkovCog(commands.Cog):
         if msg.guild is None or msg.author.bot:
             return
         if self.server_check(msg.guild.id) and msg.guild.id in self.manager and not msg.author.bot:
-            await self.manager.get_markov(msg.guild.id).process_message(msg.content)
+            await self.manager.get_markov(msg.guild.id).process_message(msg.content, msg.id, msg.author.id)
 
     chatbot_group = app_commands.Group(name="chatbot", description="chatbot features")
 
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @chatbot_group.command(name = 'speak', description = 'Speak based on a phrase or a random word.')
     async def speak(self, interaction: discord.Interaction, seed: typing.Optional[str]):
         await interaction.response.defer()
@@ -120,6 +122,8 @@ class MarkovCog(commands.Cog):
             await interaction.delete_original_response()
             await interaction.followup.send('Invalid seed. Please try another phrase.', ephemeral = True)
 
+    @app_commands.allowed_installs(guilds = True, users = True)
+    @app_commands.allowed_contexts(guilds = True, private_channels = True)
     @chatbot_group.command(name = 'babble', description= 'Speak based on a word, using fuzzy search and guessing what comes before.')
     async def babble(self, interaction: discord.Interaction, seed: str):
         await interaction.response.defer()
